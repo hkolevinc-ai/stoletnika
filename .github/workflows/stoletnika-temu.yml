@@ -1,30 +1,49 @@
-name: Stoletnika - Temu from Chrome
+name: Stoletnika - Temu
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full fills the Temu template; test checks access to 6 pages'
+        type: choice
+        options: [full, test]
+        default: full
 
 permissions:
   contents: read
 
+concurrency:
+  group: stoletnika-temu
+  cancel-in-progress: false
+
 jobs:
-  build_excel:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  scrape:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: '1'
+      INPUT_MODE: ${{ inputs.mode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Check browser export and scraper
+      - name: Install scraper
         run: |
-          if [ ! -f data/stoletnika-browser-export.json.gz ]; then
-            echo 'Upload the catalog downloaded from Chrome as data/stoletnika-browser-export.json.gz. Open STOLETNIKA_START.html for instructions.'
-            exit 1
+          python -m pip install -r requirements.txt
+          google-chrome --version
+          command -v xvfb-run
+          test -f templates/temu_template.xlsx
+      - name: Check template mapping and scraper
+        run: python -m unittest tests.test_scraper tests.test_network tests.test_browser_export tests.test_chrome -q
+      - name: Scan requested categories and fill Temu
+        run: |
+          if [ "$INPUT_MODE" = test ]; then
+            xvfb-run -a -s '-screen 0 1366x900x24' python scrape_stoletnika.py --refresh --check-access
+          else
+            xvfb-run -a -s '-screen 0 1366x900x24' python scrape_stoletnika.py --refresh
           fi
-          python -m unittest discover -s tests -q
-      - name: Fill Temu template from the browser export
-        run: python scrape_stoletnika.py --browser-export data/stoletnika-browser-export.json.gz
-      - name: Upload Excel and review report
+      - name: Download Excel and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
