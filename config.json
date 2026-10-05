@@ -1,0 +1,35 @@
+{
+  "workers": 4,
+  "transport": "auto",
+  "browser_fallback": true,
+  "default_weight_g": null,
+  "default_dimensions_cm": null,
+  "stock_if_unknown": null,
+  "shipping_template": "Magazin",
+  "handling_time": "1 Day",
+  "brands": {
+    "natural-factors": {
+      "brand": "NATURAL FACTORS",
+      "manufacturer": "Natural Factors Nutritional Products Ltd",
+      "eu_responsible_person": null,
+      "country_of_origin": null
+    },
+    "webber-naturals": {
+      "brand": "WEBBER NATURALS",
+      "manufacturer": "WN Pharmaceuticals Ltd.",
+      "eu_responsible_person": null,
+      "country_of_origin": null
+    },
+    "herbalkan": {
+      "manufacturer": "HERBALKAN",
+      "eu_responsible_person": null,
+      "country_of_origin": null
+    },
+    "bilka-chudodeyka": {
+      "manufacturer": null,
+      "eu_responsible_person": null,
+      "country_of_origin": null
+    }
+  },
+  "overrides": {}
+}
