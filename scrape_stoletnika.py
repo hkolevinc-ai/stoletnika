@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stoletnika -> the supplied Temu template. Python 3.11+, standard library only."""
+"""Stoletnika -> the supplied Temu template. Python 3.11+, Chrome fallback."""
 import argparse,concurrent.futures,csv,json,pathlib,sys,datetime,collections,traceback
 from stoletnika.catalog import discover,product,SCOPES
 from stoletnika.network import Fetcher
@@ -21,18 +21,20 @@ def main():
     args=ap.parse_args();out=pathlib.Path(args.out);out.mkdir(parents=True,exist_ok=True)
     cfg=json.loads(pathlib.Path(args.config).read_text(encoding='utf-8'))
     workers=max(1,min(args.workers or cfg.get('workers',6),12))
-    t=Template(args.template);errors=[];products=[];scope_stats=[];links=[]
+    t=Template(args.template);errors=[];products=[];scope_stats=[];links=[];discovered_count=None
     if args.offline_json:
         products=json.loads(pathlib.Path(args.offline_json).read_text(encoding='utf-8'))
     else:
-        fetcher=Fetcher(refresh=args.refresh,transport=cfg.get('transport','auto'))
+        fetcher=Fetcher(refresh=args.refresh,transport=cfg.get('transport','auto'),browser_fallback=cfg.get('browser_fallback',True),diagnostics=out/'network_diagnostics.json')
         print('Scanning exactly the 3 requested scopes...',flush=True)
         try:links,scope_stats=discover(fetcher,workers)
         except Exception as exc:
             write_json(out/'errors.json',[{'phase':'discovery','error':str(exc)}])
+            fetcher.close()
             raise
         write_json(out/'discovery.json',{'scopes':scope_stats,'products':links})
-        print(f'Found {len(links)} unique products.',flush=True)
+        discovered_count=len(links)
+        print(f'Found {discovered_count} unique products.',flush=True)
         if args.limit:links=links[:args.limit]
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             jobs={pool.submit(lambda item:product(fetcher.get(item['url']),item),item):item for item in links}
@@ -43,6 +45,7 @@ def main():
                 if i%25==0 or i==len(jobs):
                     print(f'{i}/{len(jobs)} pages, {len(products)} variants, {len(errors)} download errors',flush=True)
                     write_json(out/'products.json',products)
+        fetcher.close()
     products.sort(key=lambda p:(SCOPES.index(p['scope']),int(p['id']),int(p['variant_id'])))
     # Deduplicate by the actual CloudCart variant identifier.
     dedup={}
@@ -61,8 +64,8 @@ def main():
         w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
         for r in reviews:w.writerow({k:'; '.join(r[k]) if isinstance(r[k],list) else r[k] for k in fields})
     if mapped and not args.no_xlsx:t.write(out/'TEMU_STOLETNIKA.xlsx',mapped)
-    summary={'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'version':'1.0.0','currency':'EUR',
-      'scopes':scope_stats,'discovered_products':len(links) if not args.offline_json else None,'scraped_products':len({p['id'] for p in products}),
+    summary={'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'version':'1.1.0','currency':'EUR',
+      'scopes':scope_stats,'discovered_products':discovered_count,'scraped_products':len({p['id'] for p in products}),
       'variant_rows':len(mapped),'rows_without_category':sum(not r.get('E') for r in mapped),
       'rows_with_missing_required_fields':sum(bool(r['missing_fields']) for r in reviews),'rows_with_warnings':sum(bool(r['warnings']) for r in reviews),
       'unavailable_variants':sum(not p['available'] for p in products),'download_or_mapping_errors':len(errors),'limited_test':bool(args.limit),

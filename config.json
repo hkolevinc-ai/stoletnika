@@ -1,6 +1,7 @@
 {
-  "workers": 6,
+  "workers": 4,
   "transport": "auto",
+  "browser_fallback": true,
   "default_weight_g": null,
   "default_dimensions_cm": null,
   "stock_if_unknown": null,
