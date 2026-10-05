@@ -1,5 +1,6 @@
 import re
 from .template import colnum
+from .category_fallback import nearest_category
 
 # Ordered title/ingredient patterns, restricted to IDs in the supplied template.
 # Combinations precede their individual ingredients.
@@ -81,9 +82,9 @@ def components(p):
 def pick_category(p,template,override=None):
     if override:return str(override),'configured'
     title=p['name'].lower(); comp=components(p).lower()
-    if re.search(OUTSIDE,title):return '','Product type is outside the supplement categories in this template'
+    if re.search(OUTSIDE,title):return nearest_category(p,template,CATEGORY_RULES,comp)
     if re.search(r'билкова\s*програма',title) or (re.search(r'промо\s*пакет|комплект',title) and '+' in title):
-        return '','Mixed bundle requires a confirmed Temu category for the complete set'
+        return nearest_category(p,template,CATEGORY_RULES,comp)
     minerals=[pat for _,pat in CATEGORY_RULES if re.search(r'калци|магнези|желяз|цинк|potassium',pat)]
     mineral_count=sum(bool(re.search(pat,title,re.I)) for pat in minerals)
     if mineral_count>=2:
@@ -96,7 +97,7 @@ def pick_category(p,template,override=None):
     if match and p['brand_slug'] in ('herbalkan','bilka-chudodeyka'):
         for cid,pat in CATEGORY_RULES:
             if cid in template.category_names and re.search(pat,match[1],re.I):return cid,'first declared ingredient'
-    return '','No matching category in the supplied template'
+    return nearest_category(p,template,CATEGORY_RULES,comp)
 
 def dosage_form(p):
     text=p['name']+' '+next((x for x in p['description_lines'] if x.lower().startswith('опаковка')), '')
@@ -150,6 +151,7 @@ def map_row(p,t,config):
     dim=config.get('default_dimensions_cm')
     if dim:row.update(dict(zip(['LG','LH','LI'],dim)))
     if not cid:warnings.append(reason)
+    elif reason.startswith('nearest:'):warnings.append('Closest available template category selected: '+t.category_names[cid])
     elif reason=='first declared ingredient':warnings.append('Confirm category selected by the first declared ingredient')
     for col,img in zip(t.columns('Detail Images URL'),p['images']):row[col]=img
     for col,img in zip(t.columns('SKU Images URL'),p['images']):row[col]=img

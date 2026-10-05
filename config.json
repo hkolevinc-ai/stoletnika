@@ -1,5 +1,5 @@
 {
-  "workers": 1,
+  "workers": 8,
   "default_weight_g": null,
   "default_dimensions_cm": null,
   "stock_if_unknown": null,
@@ -30,6 +30,6 @@
     }
   },
   "overrides": {},
-  "browser_timeout": 45,
+  "http_timeout": 35,
   "request_delay": 1
 }

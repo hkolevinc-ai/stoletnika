@@ -142,7 +142,7 @@ def product(html,item):
         if weight is None:
             sw=schema.get('weight',{});weight=money(sw.get('value'))
             if weight is not None and sw.get('unitCode','').upper() in ('KG','KGM'):weight*=1000
-        out.append({**item,'id':str(data['id']),'variant_id':str(v['id']),'name':data.get('name',item['name']),'brand':data.get('brand',''),'brand_slug':urlsplit(brand_url).path.rsplit('/',1)[-1],
+        out.append({**item,'id':str(data['id']),'variant_id':str(v['id']),'name':data.get('name') or item.get('name',''),'brand':data.get('brand',''),'brand_slug':urlsplit(brand_url).path.rsplit('/',1)[-1],
            'site_category':data.get('category',''),'description_lines':lines,'description':'\n'.join(lines),'images':images,
            'sku':str(v.get('sku') or data.get('sku') or f'ST-{data["id"]}-{v["id"]}'),
            'barcode':str(v.get('barcode') or data.get('barcode') or ''),'price_eur':current,'list_price_eur':original if original and original>current else None,

@@ -2,7 +2,7 @@ import unittest,json,copy,tempfile,pathlib,zipfile,xml.etree.ElementTree as E
 from stoletnika.catalog import page_url,pagination,product,SCOPES
 from stoletnika.htmltree import parse
 from stoletnika.mapping import map_row,pick_category
-from stoletnika.template import Template,N
+from stoletnika.template import Template,N,colnum
 
 class ScraperTests(unittest.TestCase):
     @classmethod
@@ -43,10 +43,26 @@ class ScraperTests(unittest.TestCase):
         row,_=map_row(p,self.template,self.cfg)
         self.assertEqual(row['LL'],2);self.assertEqual(row['LP'],80);self.assertEqual(row['LQ'],160)
         self.assertEqual(row['LJ'],'Multi-piece set')
-    def test_no_wrong_category_for_unsupported_product(self):
+    def test_closest_category_for_unsupported_product(self):
         p=copy.deepcopy(self.example);p['name']='Билков спрей за крака';p['brand_slug']='herbalkan';p['description_lines']=[]
-        self.assertEqual(pick_category(p,self.template)[0],'')
-        p['name']='Витамин K2';self.assertEqual(pick_category(p,self.template)[0],'')
+        cid,reason=pick_category(p,self.template)
+        self.assertIn(cid,self.template.category_names);self.assertTrue(reason.startswith('nearest:'))
+        p['name']='Витамин K2';self.assertEqual(pick_category(p,self.template)[0],'17710')
+    def test_missing_plant_category_and_mixed_bundle_have_valid_nearest_leaf(self):
+        p=copy.deepcopy(self.example);p.update(name='Билкова Тинктура Турта',brand_slug='bilka-chudodeyka',description_lines=[])
+        self.assertEqual(pick_category(p,self.template)[0],'17509')
+        p['name']='ПРОМО ПАКЕТ Витамин C + Билков чай'
+        self.assertEqual(pick_category(p,self.template)[0],'17707')
+        row,review=map_row(p,self.template,self.cfg)
+        self.assertTrue(row['E']);self.assertTrue(review['category_reason'].startswith('nearest:'))
+        self.assertNotIn('E Category',review['missing_fields'])
+    def test_capsule_additives_do_not_determine_nearest_category(self):
+        p=copy.deepcopy(self.example);p.update(name='Комплекс Example',description_lines=[
+            'Съставки: (в 1 капсула)', 'Ехинацея 300 mg',
+            'Други съставки: микрокристална целулоза, силициев диоксид.'])
+        self.assertEqual(pick_category(p,self.template)[0],'17512')
+        p.update(name='Билков спрей за гърло с Лавандула',brand_slug='bilka-chudodeyka')
+        self.assertEqual(pick_category(p,self.template)[0],'17509')
     def test_configured_unknown_dropdown_reports_problem(self):
         cfg=copy.deepcopy(self.cfg);cfg['brands']['natural-factors']['manufacturer']='Unknown fake company'
         row,review=map_row(self.example,self.template,cfg)
@@ -65,5 +81,17 @@ class ScraperTests(unittest.TestCase):
                     self.assertEqual([E.tostring(x) for x in new.findall('m:'+tag,N)],[E.tostring(x) for x in old.findall('m:'+tag,N)])
                 self.assertEqual(new.find("m:sheetData/m:row[@r='5']/m:c[@r='LB5']/m:v",N).text,'10.5')
                 self.assertEqual(new.find("m:sheetData/m:row[@r='5']/m:c[@r='LT5']/m:is/m:t",N).text,'0123456789012')
+    def test_blank_category_retains_formula_and_ordered_native_cells(self):
+        import re
+        row={'E':'','G':'Unsupported category product','LB':9.5}
+        with tempfile.TemporaryDirectory() as folder:
+            dest=pathlib.Path(folder)/'filled.xlsx';self.template.write(dest,[row])
+            with zipfile.ZipFile(dest) as z:
+                root=E.fromstring(z.read(self.template.sheets['Template']))
+            cells=root.find("m:sheetData/m:row[@r='5']",N)
+            columns=[colnum(re.match(r'[A-Z]+',c.get('r'))[0]) for c in cells]
+            self.assertEqual(columns,sorted(columns))
+            self.assertIn('VLOOKUP(E5',cells.find("m:c[@r='F5']/m:f",N).text)
+            self.assertEqual(cells.find("m:c[@r='F5']",N).get('s',''),self.template.styles.get('F',''))
 
 if __name__=='__main__':unittest.main()

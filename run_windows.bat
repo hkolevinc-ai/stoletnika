@@ -1,2 +1,4 @@
 @echo off
-start "" "%~dp0STOLETNIKA_START.html"
+cd /d "%~dp0"
+python scrape_stoletnika.py --refresh
+pause

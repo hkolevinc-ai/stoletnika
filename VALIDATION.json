@@ -1,0 +1,73 @@
+{
+  "version": "1.6.0",
+  "validated_at": "2026-10-05T18:57:32.480234+00:00",
+  "backend": "ordinary HTTPS with Python standard library",
+  "browser_required": false,
+  "live_scan": {
+    "generated_at": "2026-10-05T18:41:07.716091+00:00",
+    "version": "1.5.0",
+    "currency": "EUR",
+    "source": "http",
+    "source_started_at": "2026-10-05T18:28:51.978944+00:00",
+    "scopes": [
+      {
+        "scope": "https://stoletnika.eu/vendor/bilka-chudodeyka",
+        "pages": 2,
+        "listing_rows": 48
+      },
+      {
+        "scope": "https://stoletnika.eu/vendor/herbalkan",
+        "pages": 5,
+        "listing_rows": 164
+      },
+      {
+        "scope": "https://stoletnika.eu/category/hranitelni-dobavki?vendors=natural-factors,webber-naturals",
+        "pages": 15,
+        "listing_rows": 530
+      }
+    ],
+    "discovered_products": 742,
+    "scraped_products": 742,
+    "variant_rows": 742,
+    "rows_without_category": 329,
+    "rows_with_missing_required_fields": 742,
+    "rows_with_warnings": 372,
+    "unavailable_variants": 46,
+    "download_or_mapping_errors": 0,
+    "limited_test": false,
+    "full_catalog_scraped": true,
+    "brand_counts": {
+      "Билка Чудодейка": 48,
+      "Хербалкан": 164,
+      "Natural Factors": 390,
+      "Webber Naturals": 140
+    }
+  },
+  "resumed_from_current_session_cache": true,
+  "recorded_unique_http_urls": 764,
+  "recorded_http_status_counts": {
+    "200": 764
+  },
+  "recorded_http_errors": 0,
+  "native_workbook_validation": {
+    "rows": 742,
+    "all_prices_numeric_EUR_and_equal_to_source": true,
+    "all_original_non_template_parts_identical": true,
+    "headers_validations_styles_and_dropdowns_preserved": true,
+    "cells_in_column_order": true
+  },
+  "automatic_tests_passed": 19,
+  "github_runner_run_verified": false,
+  "original_template_sha256": "fc0a405ff799a25b8ebb071bd0b437e803e3dd812224660ce357e060e7520751",
+  "category_update": {
+    "rows": 742,
+    "categories_blank": 0,
+    "categories_valid_in_template": true,
+    "previous_blank_categories_filled": 329,
+    "previously_selected_categories_unchanged": 413,
+    "prices_EUR_unchanged": true,
+    "approximate_selections_marked_in_report": true
+  },
+  "website_scan_version": "1.5.0",
+  "category_update_source": "previously verified 742-product catalog; no additional website scan"
+}

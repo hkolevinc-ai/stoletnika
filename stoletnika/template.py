@@ -82,7 +82,10 @@ class Template:
             # The native Category Name formula remains live.
             if 'E' in row and 'F' not in row:
                 formula=f'IFERROR(VLOOKUP(E{i},\'Browse Data\'!A:B,2,FALSE),"")'
-                cells.insert(1,f'<c r="F{i}" t="str"><f>{escape(formula)}</f><v>{escape(self.category_names.get(str(row["E"]),""))}</v></c>')
+                formula_style=f' s="{self.styles["F"]}"' if self.styles.get('F') else ''
+                cells.append(f'<c r="F{i}"{formula_style} t="str"><f>{escape(formula)}</f><v>{escape(self.category_names.get(str(row["E"]),""))}</v></c>')
+            # Excel cells must stay in column order even when Category is blank.
+            cells.sort(key=lambda cell:colnum(re.search(r'\br="([A-Z]+)\d+"',cell)[1]))
             new.append(f'<row r="{i}">'+''.join(cells)+'</row>')
         # Blank rows need not be serialized. Native validation ranges stay at 5000.
         data=match[1]+header+''.join(new)+match[3]
