@@ -1,0 +1,4 @@
+Качете тук изтегления през Chrome файл с точно това име:
+stoletnika-browser-export.json.gz
+
+След това стартирайте Actions → Stoletnika - Temu from Chrome → Run workflow.
