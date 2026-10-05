@@ -1,0 +1,46 @@
+name: Stoletnika - Temu catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Number of products for a test (0 = all products)'
+        required: false
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stoletnika-temu
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check required inputs
+        run: |
+          test -f templates/temu_template.xlsx
+          python -m py_compile scrape_stoletnika.py stoletnika/*.py
+          python -m unittest discover -s tests -v
+      - name: Scrape the requested scopes
+        env:
+          INPUT_LIMIT: ${{ inputs.limit }}
+        run: |
+          python scrape_stoletnika.py --refresh --limit "${INPUT_LIMIT:-0}"
+      - name: Upload Excel, source data and review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stoletnika-temu-results
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
