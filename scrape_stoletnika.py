@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Stoletnika -> the supplied Temu template. Python 3.11+, standard library only."""
+import argparse,concurrent.futures,csv,json,pathlib,sys,datetime,collections,traceback
+from stoletnika.catalog import discover,product,SCOPES
+from stoletnika.network import Fetcher
+from stoletnika.template import Template
+from stoletnika.mapping import map_row
+
+def write_json(path,value):path.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+
+def main():
+    ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--template',default='templates/temu_template.xlsx')
+    ap.add_argument('--config',default='config.json')
+    ap.add_argument('--out',default='output')
+    ap.add_argument('--workers',type=int)
+    ap.add_argument('--limit',type=int,default=0,help='Test only; 0 = full catalog')
+    ap.add_argument('--refresh',action='store_true',help='Ignore cached pages')
+    ap.add_argument('--offline-json',help='Rebuild only from a previously saved products.json')
+    ap.add_argument('--no-xlsx',action='store_true',help='Extraction and validation only')
+    args=ap.parse_args();out=pathlib.Path(args.out);out.mkdir(parents=True,exist_ok=True)
+    cfg=json.loads(pathlib.Path(args.config).read_text(encoding='utf-8'))
+    workers=max(1,min(args.workers or cfg.get('workers',6),12))
+    t=Template(args.template);errors=[];products=[];scope_stats=[];links=[]
+    if args.offline_json:
+        products=json.loads(pathlib.Path(args.offline_json).read_text(encoding='utf-8'))
+    else:
+        fetcher=Fetcher(refresh=args.refresh,transport=cfg.get('transport','auto'))
+        print('Scanning exactly the 3 requested scopes...',flush=True)
+        try:links,scope_stats=discover(fetcher,workers)
+        except Exception as exc:
+            write_json(out/'errors.json',[{'phase':'discovery','error':str(exc)}])
+            raise
+        write_json(out/'discovery.json',{'scopes':scope_stats,'products':links})
+        print(f'Found {len(links)} unique products.',flush=True)
+        if args.limit:links=links[:args.limit]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            jobs={pool.submit(lambda item:product(fetcher.get(item['url']),item),item):item for item in links}
+            for i,future in enumerate(concurrent.futures.as_completed(jobs),1):
+                item=jobs[future]
+                try:products.extend(future.result())
+                except Exception as exc:errors.append({'phase':'product','id':item['id'],'url':item['url'],'error':str(exc)})
+                if i%25==0 or i==len(jobs):
+                    print(f'{i}/{len(jobs)} pages, {len(products)} variants, {len(errors)} download errors',flush=True)
+                    write_json(out/'products.json',products)
+    products.sort(key=lambda p:(SCOPES.index(p['scope']),int(p['id']),int(p['variant_id'])))
+    # Deduplicate by the actual CloudCart variant identifier.
+    dedup={}
+    for p in products:dedup.setdefault((p['id'],p['variant_id']),p)
+    products=list(dedup.values());write_json(out/'products.json',products)
+    mapped=[];reviews=[]
+    for p in products:
+        try:
+            row,review=map_row(p,t,cfg);i=len(mapped)+5;mapped.append(row)
+            reviews.append({'excel_row':i,'id':p['id'],'variant_id':p['variant_id'],'sku':p['sku'],'name':p['name'],'brand':p['brand'],'url':p['url'],**review})
+        except Exception as exc:
+            errors.append({'phase':'mapping','id':p['id'],'url':p['url'],'error':str(exc)})
+    write_json(out/'mapped_rows.json',mapped);write_json(out/'review.json',reviews);write_json(out/'errors.json',errors)
+    with (out/'review.csv').open('w',encoding='utf-8-sig',newline='') as f:
+        fields=['excel_row','id','variant_id','sku','name','brand','category_id','category_reason','missing_fields','warnings','url']
+        w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
+        for r in reviews:w.writerow({k:'; '.join(r[k]) if isinstance(r[k],list) else r[k] for k in fields})
+    if mapped and not args.no_xlsx:t.write(out/'TEMU_STOLETNIKA.xlsx',mapped)
+    summary={'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'version':'1.0.0','currency':'EUR',
+      'scopes':scope_stats,'discovered_products':len(links) if not args.offline_json else None,'scraped_products':len({p['id'] for p in products}),
+      'variant_rows':len(mapped),'rows_without_category':sum(not r.get('E') for r in mapped),
+      'rows_with_missing_required_fields':sum(bool(r['missing_fields']) for r in reviews),'rows_with_warnings':sum(bool(r['warnings']) for r in reviews),
+      'unavailable_variants':sum(not p['available'] for p in products),'download_or_mapping_errors':len(errors),'limited_test':bool(args.limit),
+      'brand_counts':dict(collections.Counter(p['brand'] for p in products))}
+    write_json(out/'summary.json',summary)
+    print(json.dumps(summary,ensure_ascii=False,indent=2),flush=True)
+    if errors:return 2
+    if not mapped:raise RuntimeError('No rows exported; inspect errors.json')
+    return 0
+
+if __name__=='__main__':
+    try:sys.exit(main())
+    except Exception as exc:print('ERROR:',exc,file=sys.stderr);sys.exit(1)
