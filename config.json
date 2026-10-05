@@ -1,7 +1,5 @@
 {
-  "workers": 4,
-  "transport": "auto",
-  "browser_fallback": true,
+  "workers": 1,
   "default_weight_g": null,
   "default_dimensions_cm": null,
   "stock_if_unknown": null,
@@ -31,5 +29,7 @@
       "country_of_origin": null
     }
   },
-  "overrides": {}
+  "overrides": {},
+  "browser_timeout": 45,
+  "request_delay": 1
 }

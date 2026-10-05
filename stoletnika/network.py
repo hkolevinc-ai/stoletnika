@@ -15,11 +15,12 @@ def valid_catalog(text,url):
     return 'data-product-id' in text and ('_products-list' in text or 'js-products-container' in text)
 
 class Fetcher:
-    def __init__(self,cache='.cache/html',refresh=False,timeout=35,retries=2,transport='auto',browser_fallback=True,diagnostics='output/network_diagnostics.json'):
+    def __init__(self,cache='.cache/html',refresh=False,timeout=35,retries=2,transport='auto',browser_fallback=True,diagnostics='output/network_diagnostics.json',access_token=''):
         self.cache=pathlib.Path(cache);self.cache.mkdir(parents=True,exist_ok=True)
         self.refresh,self.timeout,self.retries,self.transport=refresh,timeout,retries,transport
         self.browser_fallback=browser_fallback;self.diagnostics=pathlib.Path(diagnostics) if diagnostics else None
         self.events=[];self.local=threading.local();self.lock=threading.RLock();self.browser=None;self.browser_active=False
+        self.access_token=access_token
     def _record(self,url,method,status,error):
         with self.lock:
             self.events.append({'url':url,'method':method,'status':status,'error':str(error)[:500]})
@@ -36,7 +37,9 @@ class Fetcher:
         return r.text
     def _urllib(self,url):
         try:
-            req=urllib.request.Request(url,headers={**HEADERS,'Accept-Encoding':'identity'})
+            headers={**HEADERS,'Accept-Encoding':'identity'}
+            if self.access_token:headers.update({'X-Stoletnika-Catalog-Token':self.access_token,'User-Agent':'StoletnikaTemuCatalog/1.4.0'})
+            req=urllib.request.Request(url,headers=headers)
             with urllib.request.urlopen(req,timeout=self.timeout) as r:return r.read().decode('utf-8')
         except urllib.error.HTTPError as e:raise DownloadError('urllib',e.code,e.reason) from e
     def _curl(self,url):
@@ -83,6 +86,6 @@ class Fetcher:
                 except Exception as exc:
                     errors.append(str(exc));self._record(url,'browser',getattr(exc,'status',None),exc)
             if attempt+1<self.retries:time.sleep(min(2**attempt,4))
-        raise RuntimeError('Cannot download '+url+'; '+' | '.join(dict.fromkeys(errors))+'; see network_diagnostics.json. If GitHub is blocked but the site opens on your PC, run run_windows.bat locally.')
+        raise RuntimeError('Cannot download '+url+'; '+' | '.join(dict.fromkeys(errors))+'; see network_diagnostics.json and blocked_page.html when present.')
     def close(self):
         if self.browser:self.browser.close()

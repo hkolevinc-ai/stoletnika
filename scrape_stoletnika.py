@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Stoletnika -> the supplied Temu template. Python 3.11+, Chrome fallback."""
-import argparse,concurrent.futures,csv,json,pathlib,sys,datetime,collections,traceback
+"""Automatically scan Stoletnika and fill the supplied Temu template."""
+import argparse,concurrent.futures,csv,json,pathlib,sys,datetime,collections,traceback,os
 from stoletnika.browser_export import load_export
 from stoletnika.catalog import discover,product,SCOPES
 from stoletnika.network import Fetcher
@@ -8,6 +8,12 @@ from stoletnika.template import Template
 from stoletnika.mapping import map_row
 
 def write_json(path,value):path.write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+
+def make_fetcher(args,cfg,out):
+    if args.backend=='chrome':
+        from stoletnika.chrome import ChromeFetcher
+        return ChromeFetcher(refresh=args.refresh,diagnostics=out/'network_diagnostics.json',timeout=cfg.get('browser_timeout',45),delay=cfg.get('request_delay',1))
+    return Fetcher(refresh=args.refresh,transport='urllib',retries=1,browser_fallback=False,diagnostics=out/'network_diagnostics.json',access_token=os.environ.get('STOLETNIKA_ACCESS_TOKEN',''))
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
@@ -19,10 +25,24 @@ def main():
     ap.add_argument('--refresh',action='store_true',help='Ignore cached pages')
     ap.add_argument('--offline-json',help='Rebuild only from a previously saved products.json')
     ap.add_argument('--browser-export',help='Import the .json.gz catalog downloaded from your Chrome')
-    ap.add_argument('--online',action='store_true',help='Advanced: try direct site access from this machine')
+    ap.add_argument('--online',action='store_true',help='Compatibility flag; online scanning is now the default')
+    ap.add_argument('--backend',choices=['chrome','direct'],default='chrome')
+    ap.add_argument('--check-access',action='store_true',help='Six-page access test; no full scan and no Excel')
     ap.add_argument('--no-xlsx',action='store_true',help='Extraction and validation only')
     args=ap.parse_args();out=pathlib.Path(args.out);out.mkdir(parents=True,exist_ok=True)
     cfg=json.loads(pathlib.Path(args.config).read_text(encoding='utf-8'))
+    if args.check_access:
+        from stoletnika.probe import check_access
+        fetcher=make_fetcher(args,cfg,out)
+        try:
+            result=check_access(fetcher);write_json(out/'access_test.json',result)
+            print(json.dumps(result,ensure_ascii=False,indent=2),flush=True)
+        except Exception as exc:
+            write_json(out/'errors.json',[{'phase':'access_test','error':str(exc)}]);raise
+        finally:
+            if hasattr(fetcher,'usage'):write_json(out/'api_usage.json',fetcher.usage())
+            fetcher.close()
+        return 0
     workers=max(1,min(args.workers or cfg.get('workers',6),12))
     t=Template(args.template);errors=[];products=[];scope_stats=[];links=[];discovered_count=None;source_started_at=None
     if args.browser_export:
@@ -30,12 +50,13 @@ def main():
         print(f'Imported {discovered_count} product pages from Chrome; no website requests.',flush=True)
     elif args.offline_json:
         products=json.loads(pathlib.Path(args.offline_json).read_text(encoding='utf-8'))
-    elif args.online:
-        fetcher=Fetcher(refresh=args.refresh,transport=cfg.get('transport','auto'),browser_fallback=cfg.get('browser_fallback',True),diagnostics=out/'network_diagnostics.json')
+    else:
+        fetcher=make_fetcher(args,cfg,out)
         print('Scanning exactly the 3 requested scopes...',flush=True)
         try:links,scope_stats=discover(fetcher,workers)
         except Exception as exc:
             write_json(out/'errors.json',[{'phase':'discovery','error':str(exc)}])
+            if hasattr(fetcher,'usage'):write_json(out/'api_usage.json',fetcher.usage())
             fetcher.close()
             raise
         write_json(out/'discovery.json',{'scopes':scope_stats,'products':links})
@@ -52,8 +73,7 @@ def main():
                     print(f'{i}/{len(jobs)} pages, {len(products)} variants, {len(errors)} download errors',flush=True)
                     write_json(out/'products.json',products)
         fetcher.close()
-    else:
-        raise RuntimeError('Use --browser-export data/stoletnika-browser-export.json.gz. Open STOLETNIKA_START.html for instructions. Direct HTTP access is disabled by default.')
+        if hasattr(fetcher,'usage'):write_json(out/'api_usage.json',fetcher.usage())
     products.sort(key=lambda p:(SCOPES.index(p['scope']),int(p['id']),int(p['variant_id'])))
     # Deduplicate by the actual CloudCart variant identifier.
     dedup={}
@@ -72,8 +92,8 @@ def main():
         w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
         for r in reviews:w.writerow({k:'; '.join(r[k]) if isinstance(r[k],list) else r[k] for k in fields})
     if mapped and not args.no_xlsx:t.write(out/'TEMU_STOLETNIKA.xlsx',mapped)
-    summary={'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'version':'1.2.0','currency':'EUR',
-      'source':'browser_export' if args.browser_export else ('saved_products' if args.offline_json else 'direct_http'),'source_started_at':source_started_at,
+    summary={'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'version':'1.4.0','currency':'EUR',
+      'source':'browser_export' if args.browser_export else ('saved_products' if args.offline_json else args.backend),'source_started_at':source_started_at,
       'scopes':scope_stats,'discovered_products':discovered_count,'scraped_products':len({p['id'] for p in products}),
       'variant_rows':len(mapped),'rows_without_category':sum(not r.get('E') for r in mapped),
       'rows_with_missing_required_fields':sum(bool(r['missing_fields']) for r in reviews),'rows_with_warnings':sum(bool(r['warnings']) for r in reviews),
